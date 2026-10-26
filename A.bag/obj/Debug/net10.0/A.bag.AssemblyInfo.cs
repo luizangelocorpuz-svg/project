@@ -13,7 +13,7 @@ using System.Reflection;
 [assembly: System.Reflection.AssemblyCompanyAttribute("A.bag")]
 [assembly: System.Reflection.AssemblyConfigurationAttribute("Debug")]
 [assembly: System.Reflection.AssemblyFileVersionAttribute("1.0.0.0")]
-[assembly: System.Reflection.AssemblyInformationalVersionAttribute("1.0.0+79b6523667db786af866065006a59a8b8038d236")]
+[assembly: System.Reflection.AssemblyInformationalVersionAttribute("1.0.0+bb961d032fa25b902847192d298d3756d9e13a53")]
 [assembly: System.Reflection.AssemblyProductAttribute("A.bag")]
 [assembly: System.Reflection.AssemblyTitleAttribute("A.bag")]
 [assembly: System.Reflection.AssemblyVersionAttribute("1.0.0.0")]
