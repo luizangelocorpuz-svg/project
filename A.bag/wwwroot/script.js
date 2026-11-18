@@ -1,279 +1,1023 @@
+
 (() => {
   "use strict";
-  const STORAGE_KEY = "sportshub-demo-v1";
-  const $ = (selector, root = document) => root.querySelector(selector);
-  const $$ = (selector, root = document) => [...root.querySelectorAll(selector)];
-  const today = () => new Date().toISOString().slice(0, 10);
-  const dateOffset = (days) => { const d = new Date(); d.setDate(d.getDate() + days); return d.toISOString().slice(0, 10); };
-  const uid = () => `${Date.now().toString(36)}${Math.random().toString(36).slice(2, 6)}`;
-  const safe = (value) => String(value ?? "").replace(/[&<>"']/g, c => ({ "&":"&amp;", "<":"&lt;", ">":"&gt;", '"':"&quot;", "'":"&#39;" }[c]));
-  const fmtDate = (date) => { if (!date) return "—"; const d = new Date(`${date}T00:00:00`); return Number.isNaN(d.getTime()) ? safe(date) : d.toLocaleDateString(undefined, {month:"short",day:"numeric",year:"numeric"}); };
-  const seed = {
-    equipment: [
-      {id:uid(),name:"Basketball",category:"Ball sports",location:"Equipment room A",quantity:12,condition:"Good",status:"Available"},
-      {id:uid(),name:"Badminton racket",category:"Racket sports",location:"Equipment room B",quantity:16,condition:"Good",status:"Available"},
-      {id:uid(),name:"Training cones",category:"Training gear",location:"Storage cabinet 1",quantity:30,condition:"Fair",status:"Available"},
-      {id:uid(),name:"Volleyball net",category:"Court equipment",location:"Main gym",quantity:2,condition:"Good",status:"Available"},
-      {id:uid(),name:"Table tennis paddle",category:"Racket sports",location:"Equipment room B",quantity:10,condition:"Fair",status:"Available"},
-      {id:uid(),name:"Resistance bands",category:"Training gear",location:"Fitness room",quantity:14,condition:"Good",status:"Available"}
-    ],
-    facilities: [
-      {id:uid(),name:"Main Basketball Court",activity:"Team practice",date:dateOffset(0),start:"15:00",end:"17:00",organizer:"Basketball team",status:"Scheduled"},
-      {id:uid(),name:"Badminton Court A",activity:"Club training",date:dateOffset(1),start:"09:00",end:"11:00",organizer:"Badminton club",status:"Scheduled"},
-      {id:uid(),name:"Fitness Room",activity:"Strength session",date:dateOffset(2),start:"13:00",end:"14:30",organizer:"Coaching staff",status:"Scheduled"}
-    ],
-    loans: [
-      {id:uid(),equipmentId:null,itemName:"Basketball",borrower:"Jordan Reyes",dateBorrowed:dateOffset(-1),dueDate:dateOffset(1),quantity:2,status:"Borrowed"}
-    ],
-    maintenance: [
-      {id:uid(),itemName:"Training cones",location:"Storage cabinet 1",issue:"Several cones are worn and need inspection.",priority:"Medium",dateReported:dateOffset(-2),status:"Open"}
-    ],
-    admin: false
-  };
-  let data = loadData();
-  let currentPage = "home";
-  let currentRecordType = "";
-  let editingId = null;
-  let toastTimer;
 
-  function loadData() {
-    try {
-      const saved = localStorage.getItem(STORAGE_KEY);
-      if (!saved) return structuredClone(seed);
-      const parsed = JSON.parse(saved);
-      return { ...structuredClone(seed), ...parsed,
-        equipment: Array.isArray(parsed.equipment) ? parsed.equipment : [],
-        facilities: Array.isArray(parsed.facilities) ? parsed.facilities : [],
-        loans: Array.isArray(parsed.loans) ? parsed.loans : [],
-        maintenance: Array.isArray(parsed.maintenance) ? parsed.maintenance : [] };
-    } catch (error) { console.warn("Could not load saved demo data:", error); return structuredClone(seed); }
+  // =========================================================
+  // SPORTSHUB - LANDING PAGE, DEMO LOGIN, AND ADMIN DASHBOARD
+  // =========================================================
+
+  const $ = (selector, root = document) => root.querySelector(selector);
+  const $$ = (selector, root = document) =>
+    Array.from(root.querySelectorAll(selector));
+
+  const SESSION_KEY = "sportshub-demo-session";
+
+  let supabaseClient = null;
+  let supabaseSetupError =
+    "Supabase is not configured. Set Supabase:Url and Supabase:PublishableKey in appsettings.json.";
+
+  function getSupabaseSetupError() {
+    return supabaseSetupError;
   }
-  function saveData() {
-    try { localStorage.setItem(STORAGE_KEY, JSON.stringify(data)); }
-    catch (error) { showToast("Could not save. Browser storage may be full or disabled."); }
+
+  async function configureSupabase() {
+    const response = await fetch("/api/config", {
+      headers: { Accept: "application/json" }
+    });
+
+    if (!response.ok) {
+      throw new Error(`App configuration request failed (${response.status}).`);
+    }
+
+    const config = await response.json();
+    const url = config.supabaseUrl?.trim();
+    const publishableKey = config.supabasePublishableKey?.trim();
+
+    if (!url || !publishableKey) return;
+
+    if (!window.supabase?.createClient) {
+      supabaseSetupError =
+        "The Supabase JavaScript library did not load. Check your internet connection and try again.";
+      return;
+    }
+
+    supabaseClient = window.supabase.createClient(url, publishableKey);
   }
-  function showToast(message) {
-    const toast = $("#toast"); toast.textContent = message; toast.classList.add("show");
-    clearTimeout(toastTimer); toastTimer = setTimeout(() => toast.classList.remove("show"), 2600);
-  }
-  function badge(status) {
-    const cls = /maintenance|open|overdue|high|damaged/i.test(status) ? "danger" : /borrowed|fair|medium|scheduled/i.test(status) ? "warn" : /completed|returned|resolved|available|good/i.test(status) ? "" : "neutral";
-    return `<span class="pill ${cls}">${safe(status)}</span>`;
-  }
-  function iconFor(category) {
-    const c = (category || "").toLowerCase();
-    if (c.includes("ball")) return "◉"; if (c.includes("racket")) return "⌁"; if (c.includes("training")) return "▥";
-    if (c.includes("court")) return "▦"; return "▣";
-  }
-  function navTo(page) {
-    if (!["home","inventory","schedule","borrowing","maintenance"].includes(page)) return;
-    currentPage = page;
-    $$(".page").forEach(el => el.classList.toggle("active", el.id === `page-${page}`));
-    $$(".nav-item[data-page]").forEach(el => el.classList.toggle("active", el.dataset.page === page));
-    $("#breadcrumbPage").textContent = ({home:"Overview",inventory:"Equipment inventory",schedule:"Facility schedules",borrowing:"Borrowing & returns",maintenance:"Maintenance"})[page];
-    $("#sidebar").classList.remove("open");
-    renderPage(page);
-    window.scrollTo({top:0,behavior:"smooth"});
-  }
-  function renderPage(page) {
-    renderStats();
-    if (page === "home") renderRecent();
-    if (page === "inventory") renderInventory();
-    if (page === "schedule") renderSchedules();
-    if (page === "borrowing") renderLoans();
-    if (page === "maintenance") renderMaintenance();
-  }
-  function renderStats() {
-    $("#statEquipment").textContent = data.equipment.reduce((n,e)=>n+Number(e.quantity||0),0);
-    $("#statAvailable").textContent = data.equipment.filter(e=>e.status==="Available").reduce((n,e)=>n+Number(e.quantity||0),0);
-    $("#statFacilities").textContent = new Set(data.facilities.map(f=>f.name)).size;
-    $("#statMaintenance").textContent = data.maintenance.filter(m=>m.status!=="Resolved").length;
-    $("#todayChip").textContent = new Date().toLocaleDateString(undefined,{weekday:"short",month:"short",day:"numeric"}).toUpperCase();
-    $("#sideUserName").textContent = data.admin ? "Sports Admin" : "Club Admin";
-    $("#sideUserRole").textContent = data.admin ? "Administrator · Demo" : "Demo workspace";
-    $("#logoutBtn").classList.toggle("hidden",!data.admin);
-  }
-  function renderRecent() {
-    const items = [...data.equipment].slice(0,5);
-    $("#recentEquipment").innerHTML = items.length ? items.map(e=>`<tr><td><div class="item-cell"><span class="item-symbol">${iconFor(e.category)}</span><span><strong>${safe(e.name)}</strong><span class="item-sub">${safe(e.location)}</span></span></div></td><td>${safe(e.category)}</td><td>${badge(e.condition)}</td><td>${badge(e.status)}</td></tr>`).join("") : `<tr><td colspan="4">No equipment records yet.</td></tr>`;
-  }
-  function renderInventory() {
-    const search = ($("#inventorySearch").value||"").trim().toLowerCase();
-    const category = $("#inventoryCategory").value, status = $("#inventoryStatus").value;
-    const categories = [...new Set(data.equipment.map(e=>e.category).filter(Boolean))].sort();
-    const select = $("#inventoryCategory"), prior = select.value;
-    select.innerHTML = `<option value="">All categories</option>` + categories.map(c=>`<option value="${safe(c)}">${safe(c)}</option>`).join("");
-    if (categories.includes(prior)) select.value = prior;
-    const filtered = data.equipment.filter(e => [e.name,e.category,e.location,e.condition].some(v=>String(v||"").toLowerCase().includes(search)) && (!category||e.category===category) && (!status||e.status===status));
-    $("#inventoryRows").innerHTML = filtered.map(e=>`<tr><td><div class="item-cell"><span class="item-symbol">${iconFor(e.category)}</span><span><strong>${safe(e.name)}</strong><span class="item-sub">ID: ${safe(e.id.slice(-6).toUpperCase())}</span></span></div></td><td>${safe(e.category)}</td><td>${safe(e.location)}</td><td>${safe(e.quantity)}</td><td>${badge(e.condition)}</td><td>${badge(e.status)}</td><td><div class="row-actions"><button class="small-action" data-edit="equipment" data-id="${e.id}">Edit</button><button class="small-action danger-action" data-delete="equipment" data-id="${e.id}">Delete</button></div></td></tr>`).join("");
-    $("#inventoryEmpty").classList.toggle("hidden",filtered.length>0);
-  }
-  function renderSchedules() {
-    const search = ($("#scheduleSearch").value||"").trim().toLowerCase(), status = $("#scheduleStatus").value;
-    const rows = data.facilities.filter(f=>[f.name,f.activity,f.organizer].some(v=>String(v||"").toLowerCase().includes(search))&&(!status||f.status===status)).sort((a,b)=>a.date.localeCompare(b.date));
-    $("#scheduleCards").innerHTML = rows.map(f=>`<article class="schedule-card"><div class="card-top"><div><div class="card-category">FACILITY BOOKING</div><h3>${safe(f.name)}</h3><div class="card-muted">${safe(f.activity)}</div></div>${badge(f.status)}</div><div class="card-meta"><span>▣ ${fmtDate(f.date)}</span><span>◷ ${safe(f.start)} – ${safe(f.end)}</span><span>♙ ${safe(f.organizer)}</span></div><div class="card-actions"><button class="small-action" data-edit="facility" data-id="${f.id}">Edit schedule</button><button class="small-action danger-action" data-delete="facility" data-id="${f.id}">Delete</button></div></article>`).join("");
-    $("#scheduleEmpty").classList.toggle("hidden",rows.length>0);
-  }
-  function isOverdue(loan) { return loan.status==="Borrowed" && loan.dueDate && loan.dueDate < today(); }
-  function renderLoans() {
-    const active = data.loans.filter(l=>l.status==="Borrowed");
-    $("#loanActiveCount").textContent = active.length;
-    $("#loanReturnedCount").textContent = data.loans.filter(l=>l.status==="Returned").length;
-    $("#loanOverdueCount").textContent = active.filter(isOverdue).length;
-    $("#borrowingRows").innerHTML = data.loans.map(l=>`<tr><td><strong>${safe(l.itemName)}</strong></td><td>${safe(l.borrower)}</td><td>${fmtDate(l.dateBorrowed)}</td><td>${fmtDate(l.dueDate)} ${isOverdue(l)?'<span class="pill danger">Overdue</span>':""}</td><td>${safe(l.quantity)}</td><td>${badge(l.status)}</td><td><div class="row-actions">${l.status==="Borrowed"?`<button class="small-action" data-return="${l.id}">Mark returned</button>`:"—"}<button class="small-action danger-action" data-delete="loan" data-id="${l.id}">Delete</button></div></td></tr>`).join("");
-    $("#borrowingEmpty").classList.toggle("hidden",data.loans.length>0);
-  }
-  function renderMaintenance() {
-    $("#maintAllCount").textContent = data.maintenance.length;
-    $("#maintOpenCount").textContent = data.maintenance.filter(m=>m.status!=="Resolved").length;
-    $("#maintResolvedCount").textContent = data.maintenance.filter(m=>m.status==="Resolved").length;
-    $("#maintenanceCards").innerHTML = data.maintenance.map(m=>`<article class="maintenance-card"><div class="card-top"><div><div class="card-category">MAINTENANCE REPORT · ${safe(m.priority.toUpperCase())} PRIORITY</div><h3>${safe(m.itemName)}</h3></div>${badge(m.status)}</div><div class="card-muted">⌖ ${safe(m.location)} · Reported ${fmtDate(m.dateReported)}</div><p class="issue-description">${safe(m.issue)}</p><div class="card-actions">${m.status!=="Resolved"?`<button class="small-action" data-resolve="${m.id}">Mark resolved</button>`:`<button class="small-action" data-reopen="${m.id}">Reopen issue</button>`}<button class="small-action" data-edit="maintenance" data-id="${m.id}">Edit</button><button class="small-action danger-action" data-delete="maintenance" data-id="${m.id}">Delete</button></div></article>`).join("");
-    $("#maintenanceEmpty").classList.toggle("hidden",data.maintenance.length>0);
-  }
-  const field = (name,label,type="text",options=null,required=true,full=false,placeholder="") => ({name,label,type,options,required,full,placeholder});
-  const schemas = {
-    equipment: {title:"EQUIPMENT RECORD",collection:"equipment",fields:[
-      field("name","Equipment name","text",null,true,false,"e.g. Basketball"),
-      field("category","Category","select",["Ball sports","Racket sports","Training gear","Court equipment","Fitness equipment","Other"]),
-      field("location","Storage location","text",null,true,false,"e.g. Equipment room A"),
-      field("quantity","Quantity","number",null,true,false,"Enter quantity"),
-      field("condition","Condition","select",["Good","Fair","Damaged"]),
-      field("status","Availability","select",["Available","Borrowed","Maintenance"])
-    ]},
-    facility: {title:"FACILITY SCHEDULE",collection:"facilities",fields:[
-      field("name","Facility name","text",null,true,false,"e.g. Main Basketball Court"),
-      field("activity","Activity / purpose","text",null,true,false,"e.g. Team practice"),
-      field("date","Date","date"),
-      field("start","Start time","time"),
-      field("end","End time","time"),
-      field("organizer","Organizer","text",null,true,false,"Team or staff member"),
-      field("status","Schedule status","select",["Scheduled","Completed","Cancelled"])
-    ]},
-    loan: {title:"BORROWING RECORD",collection:"loans",fields:[
-      field("itemName","Equipment item","select",[],true,true),
-      field("borrower","Borrower name","text",null,true,false,"Full name"),
-      field("dateBorrowed","Date borrowed","date"),
-      field("dueDate","Due date","date"),
-      field("quantity","Quantity borrowed","number",null,true,false,"Enter quantity")
-    ]},
-    maintenance: {title:"MAINTENANCE REPORT",collection:"maintenance",fields:[
-      field("itemName","Equipment / resource","text",null,true,false,"e.g. Volleyball net"),
-      field("location","Location","text",null,true,false,"Where is the issue?"),
-      field("priority","Priority","select",["Low","Medium","High"]),
-      field("dateReported","Date reported","date"),
-      field("status","Issue status","select",["Open","In progress","Resolved"]),
-      field("issue","Issue description","textarea",null,true,true,"Describe the damage or maintenance needed")
-    ]}
+
+  // Demo-only credentials. Do not use these for a real website.
+  const DEMO_USERNAME = "admin";
+  const DEMO_PASSWORD = "admin123";
+
+  const landingPage = $("#home");
+  const loginModal = $("#login-modal");
+  const loginForm = $("#login-form");
+  const signupForm = $("#signup-form");
+  const loginError = $("#login-error");
+  const loginStatus = $("#login-status");
+  const signupError = $("#signup-error");
+  const adminApp = $("#admin-app");
+
+  const today = () => {
+    const date = new Date();
+    const localDate = new Date(
+      date.getTime() - date.getTimezoneOffset() * 60000
+    );
+    return localDate.toISOString().slice(0, 10);
   };
-  function openRecord(type,id=null) {
-    if (!data.admin) { openLogin(); showToast("Sign in with the demo admin account to manage records."); return; }
-    const schema = schemas[type]; if (!schema) return;
-    currentRecordType = type; editingId = id;
-    const existing = id ? data[schema.collection].find(x=>x.id===id) : {};
-    $("#modalTitle").textContent = id ? `EDIT ${schema.title}` : `ADD ${schema.title}`;
-    $("#modalFields").innerHTML = schema.fields.map(f => {
-      let control = "";
-      const val = existing?.[f.name] ?? (f.name==="quantity" ? "1" : f.name==="date"||f.name==="dateBorrowed"||f.name==="dateReported" ? today() : f.name==="dueDate" ? dateOffset(7) : f.name==="condition" ? "Good" : f.name==="status" ? (type==="facility"?"Scheduled":type==="maintenance"?"Open":"Available") : f.name==="priority" ? "Medium" : f.name==="start" ? "09:00" : f.name==="end" ? "10:00" : "");
-      if (f.type==="select") {
-        let options = f.options || [];
-        if (f.name==="itemName") options = [...new Set(data.equipment.map(e=>e.name))];
-        control = `<select name="${f.name}" ${f.required?"required":""}>${options.map(o=>`<option value="${safe(o)}" ${String(o)===String(val)?"selected":""}>${safe(o)}</option>`).join("")}</select>`;
-      } else if (f.type==="textarea") control = `<textarea name="${f.name}" placeholder="${safe(f.placeholder)}" ${f.required?"required":""}>${safe(val)}</textarea>`;
-      else control = `<input name="${f.name}" type="${f.type}" value="${safe(val)}" placeholder="${safe(f.placeholder)}" ${f.required?"required":""} ${f.type==="number"?'min="1"':''}>`;
-      return `<div class="field ${f.full?"full":""}"><label for="field-${f.name}">${safe(f.label)}</label>${control.replace(`name="${f.name}"`,`id="field-${f.name}" name="${f.name}"`)}</div>`;
-    }).join("");
-    $("#modalBackdrop").classList.remove("hidden");
-    const first = $("#modalFields input, #modalFields select, #modalFields textarea"); if(first) first.focus();
-  }
-  function closeRecord() { $("#modalBackdrop").classList.add("hidden"); $("#recordForm").reset(); currentRecordType=""; editingId=null; }
-  function handleRecordSubmit(event) {
-    event.preventDefault(); const schema=schemas[currentRecordType]; if(!schema) return;
-    const formData = new FormData(event.currentTarget); const record = {};
-    schema.fields.forEach(f=>record[f.name]=String(formData.get(f.name)||"").trim());
-    if (["quantity"].includes("quantity") && currentRecordType==="equipment") record.quantity = Math.max(1,Number(record.quantity)||1);
-    if (currentRecordType==="loan") {
-      record.quantity = Math.max(1,Number(record.quantity)||1); record.status = "Borrowed";
-      const eq = data.equipment.find(e=>e.name===record.itemName);
-      if (!eq) { showToast("Add equipment to inventory before recording a loan."); return; }
-      record.equipmentId = eq.id;
-      if (eq.status==="Maintenance") { showToast("This equipment is marked for maintenance."); return; }
-      const currentlyBorrowed = data.loans.filter(l=>l.equipmentId===eq.id && l.status==="Borrowed").reduce((n,l)=>n+Number(l.quantity),0);
-      if (record.quantity + currentlyBorrowed > Number(eq.quantity)) { showToast("Loan quantity is greater than the recorded stock."); return; }
-      eq.status = record.quantity + currentlyBorrowed >= Number(eq.quantity) ? "Borrowed" : eq.status;
+
+  const escapeHTML = (value) =>
+    String(value ?? "").replace(/[&<>"']/g, (character) => ({
+      "&": "&amp;",
+      "<": "&lt;",
+      ">": "&gt;",
+      '"': "&quot;",
+      "'": "&#39;"
+    })[character]);
+
+  const formatDate = (dateString) => {
+    if (!dateString) return "—";
+
+    const date = new Date(`${dateString}T00:00:00`);
+
+    if (Number.isNaN(date.getTime())) {
+      return escapeHTML(dateString);
     }
-    if (currentRecordType==="equipment" && record.status==="Maintenance") {
-      // Equipment status can be managed independently of maintenance reports.
+
+    return date.toLocaleDateString(undefined, {
+      month: "short",
+      day: "numeric",
+      year: "numeric"
+    });
+  };
+
+  // ---------------------------------------------------------
+  // LANDING PAGE
+  // ---------------------------------------------------------
+
+  function setupLandingPage() {
+    const menuToggle = $(".menu-toggle");
+    const navMenu = $(".nav-menu");
+    const loginButton = $(".login-button");
+    const currentYear = $("#current-year");
+    const revealElements = $$(".reveal");
+
+    if (currentYear) {
+      currentYear.textContent = String(new Date().getFullYear());
     }
-    if (currentRecordType==="facility" && record.end <= record.start) { showToast("End time must be later than start time."); return; }
-    const list = data[schema.collection];
-    if (editingId) {
-      const index=list.findIndex(x=>x.id===editingId); if(index>=0) list[index]={...list[index],...record};
-      showToast("Record updated successfully.");
+
+    // Mobile navigation
+    if (menuToggle && navMenu) {
+      menuToggle.addEventListener("click", () => {
+        const isExpanded =
+          menuToggle.getAttribute("aria-expanded") === "true";
+
+        menuToggle.setAttribute("aria-expanded", String(!isExpanded));
+        menuToggle.setAttribute(
+          "aria-label",
+          isExpanded ? "Open navigation menu" : "Close navigation menu"
+        );
+
+        navMenu.classList.toggle("is-open", !isExpanded);
+      });
+
+      $$("a", navMenu).forEach((link) => {
+        link.addEventListener("click", () => {
+          menuToggle.setAttribute("aria-expanded", "false");
+          menuToggle.setAttribute("aria-label", "Open navigation menu");
+          navMenu.classList.remove("is-open");
+        });
+      });
+    }
+
+    // Login button opens the login modal instead of showing an alert.
+    if (loginButton) {
+      loginButton.addEventListener("click", openLogin);
+    }
+
+    // Reveal animations
+    const prefersReducedMotion =
+      window.matchMedia("(prefers-reduced-motion: reduce)").matches;
+
+    if (
+      prefersReducedMotion ||
+      !("IntersectionObserver" in window)
+    ) {
+      revealElements.forEach((element) => {
+        element.classList.add("is-visible");
+      });
     } else {
-      record.id=uid(); if(currentRecordType==="loan") record.status="Borrowed";
-      list.unshift(record); showToast("Record added successfully.");
+      document.documentElement.classList.add("has-reveal");
+
+      const observer = new IntersectionObserver(
+        (entries, currentObserver) => {
+          entries.forEach((entry) => {
+            if (entry.isIntersecting) {
+              entry.target.classList.add("is-visible");
+              currentObserver.unobserve(entry.target);
+            }
+          });
+        },
+        { threshold: 0.12 }
+      );
+
+      revealElements.forEach((element) => observer.observe(element));
     }
-    saveData(); closeRecord(); renderPage(currentPage);
   }
+
+  // ---------------------------------------------------------
+  // LOGIN MODAL
+  // ---------------------------------------------------------
+
   function openLogin() {
-    $("#loginBackdrop").classList.remove("hidden"); $("#loginError").classList.add("hidden");
-    $("#loginUsername").focus();
+    if (!loginModal) return;
+
+    loginModal.setAttribute("aria-hidden", "false");
+    loginModal.classList.add("is-open");
+
+    showAuthView("login");
+
+    document.body.classList.add("login-open");
+
+    window.setTimeout(() => {
+      $("#admin-username")?.focus();
+    }, 50);
   }
-  function closeLogin() { $("#loginBackdrop").classList.add("hidden"); $("#loginForm").reset(); }
-  function login(event) {
-    event.preventDefault();
-    if ($("#loginUsername").value.trim()==="admin" && $("#loginPassword").value==="sports123") {
-      data.admin=true; saveData(); closeLogin(); renderStats(); showToast("Demo admin access enabled.");
-    } else { $("#loginError").classList.remove("hidden"); }
+
+  function closeLogin() {
+    if (!loginModal) return;
+
+    loginModal.setAttribute("aria-hidden", "true");
+    loginModal.classList.remove("is-open");
+    document.body.classList.remove("login-open");
+
+    if (loginForm) loginForm.reset();
+    if (signupForm) signupForm.reset();
+    showAuthView("login");
+
+    if (loginError) {
+      loginError.textContent = "";
+      loginError.classList.remove("visible");
+    }
+
+    if (loginStatus) {
+      loginStatus.textContent = "";
+      loginStatus.classList.remove("visible");
+    }
+
+    if (signupError) {
+      signupError.textContent = "";
+      signupError.classList.remove("visible");
+    }
+
+    resetPasswordVisibility();
   }
-  function logout() { data.admin=false; saveData(); renderStats(); showToast("Signed out of demo admin access."); }
-  function deleteRecord(type,id) {
-    if (!data.admin) { openLogin(); return; }
-    const map={equipment:"equipment",facility:"facilities",loan:"loans",maintenance:"maintenance"};
-    const collection=map[type]; if(!collection) return;
-    const record=data[collection].find(x=>x.id===id);
-    if(!record || !confirm(`Delete "${record.name||record.itemName||"this record"}"? This cannot be undone.`)) return;
-    data[collection]=data[collection].filter(x=>x.id!==id);
-    saveData(); renderPage(currentPage); showToast("Record deleted.");
+
+  function showAuthView(view) {
+    const showLogin = view === "login";
+    $("#login-view").hidden = !showLogin;
+    $("#signup-view").hidden = showLogin;
+    $(".login-panel").setAttribute(
+      "aria-labelledby",
+      showLogin ? "login-title" : "signup-title"
+    );
+
+    if (loginError) {
+      loginError.textContent = "";
+      loginError.classList.remove("visible");
+    }
+
+    if (signupError) {
+      signupError.textContent = "";
+      signupError.classList.remove("visible");
+    }
+
+    if (loginStatus) {
+      loginStatus.textContent = "";
+      loginStatus.classList.remove("visible");
+    }
   }
-  function markReturned(id) {
-    if (!data.admin) { openLogin(); return; }
-    const loan=data.loans.find(l=>l.id===id); if(!loan) return;
-    loan.status="Returned";
-    const activeSameItem=data.loans.some(l=>l.id!==id&&l.equipmentId===loan.equipmentId&&l.status==="Borrowed");
-    const eq=data.equipment.find(e=>e.id===loan.equipmentId);
-    if(eq && !activeSameItem && eq.status==="Borrowed") eq.status="Available";
-    saveData(); renderPage(currentPage); showToast("Equipment return recorded.");
+
+  function showLoginError(message) {
+    if (!loginError) {
+      window.alert(message);
+      return;
+    }
+
+    loginError.textContent = message;
+    loginError.classList.add("visible");
   }
-  function setMaintenanceStatus(id,status) {
-    if(!data.admin) { openLogin(); return; }
-    const m=data.maintenance.find(x=>x.id===id); if(!m)return;
-    m.status=status; saveData(); renderPage(currentPage); showToast(`Maintenance marked ${status.toLowerCase()}.`);
+
+  function showSignupError(message) {
+    signupError.textContent = message;
+    signupError.classList.add("visible");
   }
-  function quickAction(action) {
-    const map={"add-equipment":"equipment","add-booking":"facility","add-borrow":"loan","add-maintenance":"maintenance"};
-    if(map[action]) openRecord(map[action]);
+
+  function showLoginStatus(message) {
+    loginStatus.textContent = message;
+    loginStatus.classList.add("visible");
   }
-  document.addEventListener("click",event=>{
-    const nav=event.target.closest("[data-page]"); if(nav){event.preventDefault();navTo(nav.dataset.page);return;}
-    const quick=event.target.closest("[data-action]"); if(quick){quickAction(quick.dataset.action);return;}
-    const edit=event.target.closest("[data-edit]"); if(edit){openRecord(edit.dataset.edit,edit.dataset.id);return;}
-    const del=event.target.closest("[data-delete]"); if(del){deleteRecord(del.dataset.delete,del.dataset.id);return;}
-    const ret=event.target.closest("[data-return]"); if(ret){markReturned(ret.dataset.return);return;}
-    const res=event.target.closest("[data-resolve]"); if(res){setMaintenanceStatus(res.dataset.resolve,"Resolved");return;}
-    const reopen=event.target.closest("[data-reopen]"); if(reopen){setMaintenanceStatus(reopen.dataset.reopen,"Open");return;}
+
+  function setAccountSignedIn(isSignedIn) {
+    const loginButton = $(".login-button");
+    const logoutButton = $("#account-logout-button");
+
+    if (loginButton) loginButton.hidden = isSignedIn;
+    if (logoutButton) logoutButton.hidden = !isSignedIn;
+  }
+
+  function resetPasswordVisibility() {
+    $$("[data-password-target]").forEach((button) => {
+      const input = $(`#${button.dataset.passwordTarget}`);
+      if (input) input.type = "password";
+      button.textContent = "Show";
+      button.setAttribute("aria-label", "Show password");
+      button.setAttribute("aria-pressed", "false");
+    });
+  }
+
+  $$("[data-password-target]").forEach((button) => {
+    button.addEventListener("click", () => {
+      const input = $(`#${button.dataset.passwordTarget}`);
+      if (!input) return;
+
+      const shouldShow = input.type === "password";
+      input.type = shouldShow ? "text" : "password";
+      button.textContent = shouldShow ? "Hide" : "Show";
+      button.setAttribute(
+        "aria-label",
+        shouldShow ? "Hide password" : "Show password"
+      );
+      button.setAttribute("aria-pressed", String(shouldShow));
+    });
   });
-  $("#menuBtn").addEventListener("click",()=>$("#sidebar").classList.toggle("open"));
-  $("#adminNav").addEventListener("click",openLogin); $("#topAdminBtn").addEventListener("click",openLogin);
-  $("#logoutBtn").addEventListener("click",logout);
-  $("#closeModal").addEventListener("click",closeRecord); $("#cancelModal").addEventListener("click",closeRecord);
-  $("#modalBackdrop").addEventListener("click",e=>{if(e.target===$("#modalBackdrop"))closeRecord();});
-  $("#closeLogin").addEventListener("click",closeLogin);
-  $("#loginBackdrop").addEventListener("click",e=>{if(e.target===$("#loginBackdrop"))closeLogin();});
-  $("#recordForm").addEventListener("submit",handleRecordSubmit); $("#loginForm").addEventListener("submit",login);
-  $("#inventorySearch").addEventListener("input",renderInventory); $("#inventoryCategory").addEventListener("change",renderInventory); $("#inventoryStatus").addEventListener("change",renderInventory);
-  $("#scheduleSearch").addEventListener("input",renderSchedules); $("#scheduleStatus").addEventListener("change",renderSchedules);
-  document.addEventListener("keydown",e=>{if(e.key==="Escape"){closeRecord();closeLogin();$("#sidebar").classList.remove("open");}});
-  $("#todayChip").textContent=new Date().toLocaleDateString(undefined,{weekday:"short",month:"short",day:"numeric"}).toUpperCase();
-  renderPage("home");
+
+  $("#show-signup")?.addEventListener("click", () => {
+    showAuthView("signup");
+    window.setTimeout(() => $("#signup-full-name")?.focus(), 0);
+  });
+
+  $("#show-login")?.addEventListener("click", () => {
+    showAuthView("login");
+    window.setTimeout(() => $("#admin-username")?.focus(), 0);
+  });
+
+  async function login(event) {
+    event.preventDefault();
+
+    const emailOrUsername = $("#admin-username")?.value.trim() ?? "";
+    const password = $("#admin-password")?.value ?? "";
+
+    if (
+      emailOrUsername === DEMO_USERNAME &&
+      password === DEMO_PASSWORD
+    ) {
+      // This flag is for a local demonstration only.
+      sessionStorage.setItem(SESSION_KEY, "true");
+
+      closeLogin();
+      showDashboard();
+      showToast("Demo login successful.");
+
+      return;
+    }
+
+    if (!supabaseClient) {
+      showLoginError(getSupabaseSetupError());
+      return;
+    }
+
+    if (!/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(emailOrUsername)) {
+      showLoginError("Enter the email address used to create your account.");
+      return;
+    }
+
+    const submitButton = $("#login-form button[type='submit']");
+    submitButton.disabled = true;
+    submitButton.textContent = "Signing in...";
+
+    try {
+      const { data, error } = await supabaseClient.auth.signInWithPassword({
+        email: emailOrUsername,
+        password
+      });
+
+      if (error) throw error;
+
+      setAccountSignedIn(Boolean(data.user));
+      closeLogin();
+      showLandingPage();
+      showToast(
+        "Signed in. Registered accounts do not have administrator dashboard access."
+      );
+    } catch (error) {
+      showLoginError(
+        error instanceof Error
+          ? error.message
+          : "Unable to sign in. Please check your connection and try again."
+      );
+    } finally {
+      submitButton.disabled = false;
+      submitButton.innerHTML = 'Sign in <span aria-hidden="true">↗</span>';
+    }
+  }
+
+  async function signup(event) {
+    event.preventDefault();
+
+    const fullName = $("#signup-full-name").value.trim();
+    const email = $("#signup-email").value.trim().toLowerCase();
+    const username = $("#signup-username").value.trim();
+    const password = $("#signup-password").value;
+    const confirmPassword = $("#signup-confirm-password").value;
+
+    if (!fullName || !email || !username || !password || !confirmPassword) {
+      showSignupError("Complete all fields to create your account.");
+      return;
+    }
+
+    if (password !== confirmPassword) {
+      showSignupError("The passwords do not match.");
+      return;
+    }
+
+    if (!supabaseClient) {
+      showSignupError(getSupabaseSetupError());
+      return;
+    }
+
+    const submitButton = $("#signup-form button[type='submit']");
+    submitButton.disabled = true;
+    submitButton.textContent = "Creating account...";
+
+    try {
+      const { data, error } = await supabaseClient.auth.signUp({
+        email,
+        password,
+        options: {
+          data: {
+            full_name: fullName,
+            username
+          },
+          emailRedirectTo: window.location.origin
+        }
+      });
+
+      if (error) throw error;
+
+      signupForm.reset();
+      resetPasswordVisibility();
+
+      if (data.session && data.user) {
+        setAccountSignedIn(true);
+        closeLogin();
+        showLandingPage();
+        showToast(
+          "Account created and signed in. Administrator dashboard access is restricted."
+        );
+        return;
+      }
+
+      showAuthView("login");
+      $("#admin-username").value = email;
+      showLoginStatus(
+        "Account created. Check your email to confirm the address, then sign in."
+      );
+    } catch (error) {
+      showSignupError(
+        error instanceof Error
+          ? error.message
+          : "Unable to create your account. Please try again."
+      );
+    } finally {
+      submitButton.disabled = false;
+      submitButton.innerHTML =
+        'Create account <span aria-hidden="true">↗</span>';
+    }
+  }
+
+  // Close modal when clicking its close button or backdrop.
+  $$("[data-close-login]").forEach((element) => {
+    element.addEventListener("click", closeLogin);
+  });
+
+  if (loginForm) {
+    loginForm.addEventListener("submit", login);
+  }
+
+  if (signupForm) {
+    signupForm.addEventListener("submit", signup);
+  }
+
+  async function signOutAccount() {
+    const logoutButton = $("#account-logout-button");
+    if (logoutButton) logoutButton.disabled = true;
+
+    try {
+      const { error } = await supabaseClient.auth.signOut();
+      if (error) throw error;
+
+      setAccountSignedIn(false);
+      showToast("You have logged out.");
+    } catch (error) {
+      const message =
+        error instanceof Error
+          ? error.message
+          : "Unable to log out. Please try again.";
+      console.error("Supabase sign-out failed:", error);
+      showToast(`Sign out failed: ${message}`);
+    } finally {
+      if (logoutButton) logoutButton.disabled = false;
+    }
+  }
+
+  $("#account-logout-button")?.addEventListener("click", signOutAccount);
+
+  function initializeSupabaseAuth() {
+    if (!supabaseClient) return;
+
+    supabaseClient.auth.onAuthStateChange((_event, session) => {
+      setAccountSignedIn(Boolean(session?.user));
+    });
+
+    supabaseClient.auth.getSession().then(({ data, error }) => {
+      if (error) {
+        console.error("Unable to restore the Supabase session:", error);
+        showToast("Unable to restore your account session. Please sign in again.");
+        return;
+      }
+
+      setAccountSignedIn(Boolean(data.session?.user));
+    }).catch((error) => {
+      console.error("Unable to restore the Supabase session:", error);
+      showToast("Unable to restore your account session. Please sign in again.");
+    });
+  }
+
+  let data = { equipment: [] };
+  let editingEquipmentId = null;
+
+  function normalizeEquipment(item) {
+    return {
+      id: String(item.id),
+      name: item.name,
+      category: item.category,
+      quantity: Number(item.quantity),
+      condition: item.condition,
+      availability: item.status
+    };
+  }
+
+  async function requestEquipment(url, options = {}) {
+    const response = await fetch(url, {
+      ...options,
+      headers: {
+        Accept: "application/json",
+        ...(options.body ? { "Content-Type": "application/json" } : {}),
+        ...options.headers
+      }
+    });
+
+    if (!response.ok) {
+      let message = `Equipment request failed (${response.status}).`;
+      try {
+        const error = await response.json();
+        if (error.error) message = error.error;
+      } catch {
+        // Keep the HTTP status message when the server does not return JSON.
+      }
+      throw new Error(message);
+    }
+
+    return response.status === 204 ? null : response.json();
+  }
+
+  async function loadEquipment() {
+    const records = await requestEquipment("/api/equipment");
+    if (!Array.isArray(records)) {
+      throw new Error("The equipment endpoint returned an invalid response.");
+    }
+
+    data.equipment = records.map(normalizeEquipment);
+    renderDashboard();
+  }
+
+  // ---------------------------------------------------------
+  // DASHBOARD DISPLAY AND NAVIGATION
+  // ---------------------------------------------------------
+
+  function showDashboard() {
+    if (!adminApp) return;
+
+    if (landingPage) {
+      landingPage.closest("main")?.setAttribute("hidden", "");
+      $(".site-header")?.setAttribute("hidden", "");
+      $(".site-footer")?.setAttribute("hidden", "");
+    }
+
+    adminApp.hidden = false;
+
+    renderDashboard();
+    showPage("overview");
+    loadEquipment().catch((error) => {
+      console.error("Unable to load equipment from the database:", error);
+      showToast(error.message || "Unable to load equipment from the database.");
+    });
+
+    window.scrollTo({ top: 0, behavior: "auto" });
+  }
+
+  function showLandingPage() {
+    if (adminApp) adminApp.hidden = true;
+
+    if (landingPage) {
+      landingPage.closest("main")?.removeAttribute("hidden");
+      $(".site-header")?.removeAttribute("hidden");
+      $(".site-footer")?.removeAttribute("hidden");
+    }
+  }
+
+  function showPage(pageName) {
+    const allowedPages = [
+      "overview",
+      "inventory",
+      "facilities",
+      "borrowings",
+      "maintenance"
+    ];
+
+    if (!allowedPages.includes(pageName)) return;
+
+    $$(".admin-page").forEach((page) => {
+      page.hidden = page.id !== `page-${pageName}`;
+    });
+
+    $$(".admin-nav-link").forEach((button) => {
+      const active = button.dataset.page === pageName;
+
+      button.classList.toggle("active", active);
+
+      if (active) {
+        button.setAttribute("aria-current", "page");
+      } else {
+        button.removeAttribute("aria-current");
+      }
+    });
+
+    const titles = {
+      overview: "Overview",
+      inventory: "Equipment Inventory",
+      facilities: "Facility Schedule",
+      borrowings: "Borrowing & Returns",
+      maintenance: "Maintenance"
+    };
+
+    const pageTitle = $("#page-title");
+
+    if (pageTitle) {
+      pageTitle.textContent = titles[pageName];
+    }
+
+    renderDashboard();
+  }
+
+  $$(".admin-nav-link").forEach((button) => {
+    button.addEventListener("click", () => {
+      showPage(button.dataset.page);
+    });
+  });
+
+  $$("[data-goto]").forEach((button) => {
+    button.addEventListener("click", () => {
+      showPage(button.dataset.goto);
+    });
+  });
+
+  // ---------------------------------------------------------
+  // DASHBOARD STATISTICS
+  // ---------------------------------------------------------
+
+  function renderDashboard() {
+    const equipment = data.equipment;
+
+    const totalQuantity = equipment.reduce(
+      (sum, item) => sum + Number(item.quantity || 0),
+      0
+    );
+
+    const availableQuantity = equipment
+      .filter((item) => item.availability === "Available")
+      .reduce((sum, item) => sum + Number(item.quantity || 0), 0);
+
+    const borrowedQuantity = equipment
+      .filter((item) => item.availability === "Borrowed")
+      .reduce((sum, item) => sum + Number(item.quantity || 0), 0);
+
+    const maintenanceCount = equipment.filter(
+      (item) =>
+        item.availability === "Maintenance" ||
+        item.condition === "Needs repair" ||
+        item.condition === "Damaged"
+    ).length;
+
+    setText("#stat-equipment", totalQuantity);
+    setText("#stat-facilities", "4");
+    setText("#stat-borrowings", borrowedQuantity);
+    setText("#stat-maintenance", maintenanceCount);
+
+    setText("#available-count", availableQuantity);
+    setText("#borrowed-count", borrowedQuantity);
+    setText(
+      "#repair-count",
+      equipment
+        .filter((item) => item.availability === "Maintenance")
+        .reduce((sum, item) => sum + Number(item.quantity || 0), 0)
+    );
+
+    setText("#dashboard-year", new Date().getFullYear());
+
+    renderEquipment();
+  }
+
+  function setText(selector, value) {
+    const element = $(selector);
+    if (element) element.textContent = String(value);
+  }
+
+  // ---------------------------------------------------------
+  // EQUIPMENT INVENTORY
+  // ---------------------------------------------------------
+
+  function renderEquipment() {
+    const tableBody = $("#inventory-table-body");
+    const searchInput = $("#inventory-search");
+    const countLabel = $("#inventory-count");
+    const emptyMessage = $("#inventory-empty");
+
+    if (!tableBody) return;
+
+    const search = (searchInput?.value ?? "").trim().toLowerCase();
+
+    const filtered = data.equipment.filter((item) => {
+      return [
+        item.name,
+        item.category,
+        item.condition,
+        item.availability
+      ].some((value) =>
+        String(value ?? "").toLowerCase().includes(search)
+      );
+    });
+
+    tableBody.innerHTML = filtered.map((item) => {
+      const statusClass =
+        item.availability === "Available"
+          ? "good"
+          : item.availability === "Maintenance"
+            ? "repair"
+            : "booked";
+
+      const conditionClass =
+        item.condition === "Good"
+          ? "good"
+          : item.condition === "Fair"
+            ? "booked"
+            : "repair";
+
+      return `
+        <tr>
+          <td>
+            <strong>${escapeHTML(item.name)}</strong>
+          </td>
+          <td>${escapeHTML(item.category)}</td>
+          <td>${escapeHTML(item.quantity)}</td>
+          <td>
+            <span class="pill-status ${conditionClass}">
+              ${escapeHTML(item.condition)}
+            </span>
+          </td>
+          <td>
+            <span class="pill-status ${statusClass}">
+              ${escapeHTML(item.availability)}
+            </span>
+          </td>
+          <td>
+            <button
+              class="small-action"
+              type="button"
+              data-edit-equipment="${escapeHTML(item.id)}"
+            >Edit</button>
+            <button
+              class="small-action danger-action"
+              type="button"
+              data-delete-equipment="${escapeHTML(item.id)}"
+            >Delete</button>
+          </td>
+        </tr>
+      `;
+    }).join("");
+
+    if (countLabel) {
+      countLabel.textContent =
+        `${filtered.length} ${filtered.length === 1 ? "item" : "items"}`;
+    }
+
+    if (emptyMessage) {
+      emptyMessage.hidden = filtered.length > 0;
+    }
+  }
+
+  const equipmentForm = $("#equipment-form");
+
+  function openEquipmentForm(item = null) {
+    if (!equipmentForm) return;
+
+    editingEquipmentId = item ? item.id : null;
+
+    setText(
+      "#equipment-form-title",
+      item ? "Edit equipment" : "Add equipment"
+    );
+
+    $("#equipment-name").value = item?.name ?? "";
+    $("#equipment-category").value = item?.category ?? "";
+    $("#equipment-quantity").value = item?.quantity ?? 1;
+    $("#equipment-condition").value = item?.condition ?? "Good";
+
+    equipmentForm.hidden = false;
+
+    $("#equipment-name")?.focus();
+    equipmentForm.scrollIntoView({
+      behavior: "smooth",
+      block: "nearest"
+    });
+  }
+
+  function closeEquipmentForm() {
+    if (!equipmentForm) return;
+
+    equipmentForm.reset();
+    equipmentForm.hidden = true;
+    editingEquipmentId = null;
+  }
+
+  $("#add-equipment-button")?.addEventListener("click", () => {
+    openEquipmentForm();
+  });
+
+  $("#cancel-equipment")?.addEventListener("click", closeEquipmentForm);
+
+  $("#inventory-search")?.addEventListener("input", renderEquipment);
+
+  if (equipmentForm) {
+    equipmentForm.addEventListener("submit", async (event) => {
+      event.preventDefault();
+
+      const name = $("#equipment-name").value.trim();
+      const category = $("#equipment-category").value.trim();
+      const quantity = Number($("#equipment-quantity").value);
+      const condition = $("#equipment-condition").value;
+
+      if (!name || !category || !Number.isInteger(quantity) || quantity < 1) {
+        showToast("Enter a name, category, and valid quantity.");
+        return;
+      }
+
+      const existing = editingEquipmentId
+        ? data.equipment.find((item) => item.id === editingEquipmentId)
+        : null;
+
+      if (editingEquipmentId && !existing) {
+        showToast("That equipment record could not be found.");
+        closeEquipmentForm();
+        return;
+      }
+
+      const availability = condition === "Needs repair"
+        ? "Maintenance"
+        : existing?.availability === "Maintenance"
+          ? "Available"
+          : existing?.availability ?? "Available";
+      const saveButton = $("#equipment-form button[type='submit']");
+      saveButton.disabled = true;
+
+      try {
+        const saved = await requestEquipment(
+          existing
+            ? `/api/equipment/${encodeURIComponent(existing.id)}`
+            : "/api/equipment",
+          {
+            method: existing ? "PUT" : "POST",
+            body: JSON.stringify({
+              name,
+              category,
+              quantity,
+              condition,
+              status: availability
+            })
+          }
+        );
+
+        if (existing) {
+          data.equipment = data.equipment.map((item) =>
+            item.id === existing.id ? normalizeEquipment(saved) : item
+          );
+          showToast("Equipment updated.");
+        } else {
+          data.equipment.unshift(normalizeEquipment(saved));
+          showToast("Equipment added.");
+        }
+
+        closeEquipmentForm();
+        renderDashboard();
+      } catch (error) {
+        console.error("Unable to save equipment:", error);
+        showToast(error.message || "Unable to save equipment.");
+      } finally {
+        saveButton.disabled = false;
+      }
+    });
+  }
+
+  document.addEventListener("click", (event) => {
+    const editButton = event.target.closest("[data-edit-equipment]");
+
+    if (editButton) {
+      const item = data.equipment.find(
+        (equipment) =>
+          equipment.id === editButton.dataset.editEquipment
+      );
+
+      if (item) openEquipmentForm(item);
+      return;
+    }
+
+    const deleteButton = event.target.closest("[data-delete-equipment]");
+
+    if (deleteButton) {
+      const item = data.equipment.find(
+        (equipment) =>
+          equipment.id === deleteButton.dataset.deleteEquipment
+      );
+
+      if (!item) return;
+
+      const confirmed = window.confirm(
+        `Delete "${item.name}" from the equipment inventory?`
+      );
+
+      if (!confirmed) return;
+
+      requestEquipment(`/api/equipment/${encodeURIComponent(item.id)}`, {
+        method: "DELETE"
+      }).then(() => {
+        data.equipment = data.equipment.filter(
+          (equipment) => equipment.id !== item.id
+        );
+
+        renderDashboard();
+        showToast("Equipment deleted.");
+      }).catch((error) => {
+        console.error("Unable to delete equipment:", error);
+        showToast(error.message || "Unable to delete equipment.");
+      });
+    }
+  });
+
+  // ---------------------------------------------------------
+  // LOGOUT
+  // ---------------------------------------------------------
+
+  function logout() {
+    sessionStorage.removeItem(SESSION_KEY);
+
+    closeEquipmentForm();
+    closeLogin();
+    showLandingPage();
+
+    showToast("You have logged out.");
+    window.scrollTo({ top: 0, behavior: "smooth" });
+  }
+
+  $$(".logout-button, #logout-button-mobile").forEach((button) => {
+    button.addEventListener("click", logout);
+  });
+
+  // ---------------------------------------------------------
+  // TOAST MESSAGE
+  // ---------------------------------------------------------
+
+  let toastTimeout;
+
+  function showToast(message) {
+    let toast = $("#sportshub-toast");
+
+    if (!toast) {
+      toast = document.createElement("div");
+      toast.id = "sportshub-toast";
+      toast.setAttribute("role", "status");
+      toast.setAttribute("aria-live", "polite");
+
+      Object.assign(toast.style, {
+        position: "fixed",
+        right: "20px",
+        bottom: "20px",
+        zIndex: "99999",
+        maxWidth: "calc(100vw - 40px)",
+        padding: "13px 18px",
+        borderRadius: "10px",
+        background: "#202820",
+        color: "#ffffff",
+        fontSize: "14px",
+        boxShadow: "0 8px 28px rgba(0,0,0,0.25)",
+        opacity: "0",
+        transform: "translateY(8px)",
+        transition: "opacity 180ms ease, transform 180ms ease"
+      });
+
+      document.body.appendChild(toast);
+    }
+
+    toast.textContent = message;
+    toast.style.opacity = "1";
+    toast.style.transform = "translateY(0)";
+
+    window.clearTimeout(toastTimeout);
+
+    toastTimeout = window.setTimeout(() => {
+      toast.style.opacity = "0";
+      toast.style.transform = "translateY(8px)";
+    }, 2600);
+  }
+
+  // ---------------------------------------------------------
+  // KEYBOARD SUPPORT
+  // ---------------------------------------------------------
+
+  document.addEventListener("keydown", (event) => {
+    if (event.key === "Escape") {
+      closeLogin();
+      closeEquipmentForm();
+    }
+  });
+
+  // ---------------------------------------------------------
+  // STARTUP
+  // ---------------------------------------------------------
+
+  setupLandingPage();
+  configureSupabase()
+    .then(initializeSupabaseAuth)
+    .catch((error) => {
+      console.error("Unable to load Supabase configuration:", error);
+      supabaseSetupError =
+        "Unable to load app configuration. Start the app through its ASP.NET Core server and try again.";
+    });
+
+  // Allow the demo dashboard to remain open during this browser tab's
+  // session if the page is refreshed after logging in.
+  if (sessionStorage.getItem(SESSION_KEY) === "true") {
+    showDashboard();
+  } else {
+    showLandingPage();
+  }
 })();

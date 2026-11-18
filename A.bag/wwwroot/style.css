@@ -564,7 +564,7 @@ h2 {
 .about-image {
   position: absolute;
   inset: 0;
-  background: linear-gradient(180deg, rgba(14, 18, 13, 0.03), rgba(14, 18, 13, 0.25)), url("https://images.unsplash.com/photo-1508098682722-e99c43a406b2?auto=format&fit=crop&w=1000&q=85") center / cover;
+  background: linear-gradient(180deg, rgba(14, 18, 13, 0.03), rgba(14, 18, 13, 0.25)), url("https://images.unsplash.com/photo-1546519638-68e109498ffc?auto=format&fit=crop&w=1200&q=85") center 60% / cover;
   filter: saturate(0.65);
 }
 
@@ -796,12 +796,17 @@ h2 {
 }
 
 .reveal {
-  opacity: 0;
-  transform: translateY(18px);
+  opacity: 1;
+  transform: none;
   transition: opacity 650ms ease, transform 650ms ease;
 }
 
-.reveal.is-visible {
+.has-reveal .reveal {
+  opacity: 0;
+  transform: translateY(18px);
+}
+
+.has-reveal .reveal.is-visible {
   opacity: 1;
   transform: translateY(0);
 }
@@ -1186,3 +1191,42 @@ body.dashboard-mode { min-height: 100vh; background: #101510; }
 .admin-footer { padding: 30px 0 5px; color: #70796b; font-size: 9px; }
 @media(max-width:1100px) { .admin-sidebar { width: 220px; }.admin-main { margin-left: 220px; padding-inline: 25px; }.stat-grid { grid-template-columns: repeat(2,minmax(0,1fr)); }.dashboard-columns { grid-template-columns: 1fr; } }
 @media(max-width:700px) { .login-panel { padding: 30px 24px; }.admin-sidebar { position: static; width: auto; padding: 16px; border-right: 0; border-bottom: 1px solid var(--line); }.admin-brand { padding: 0 4px 17px; }.sidebar-label, .sidebar-bottom { display: none; }.admin-nav { display: flex; gap: 7px; overflow-x: auto; padding-bottom: 3px; }.admin-nav-link { min-width: max-content; min-height: 39px; padding-inline: 11px; }.admin-main { margin-left: 0; padding: 24px 16px 18px; }.admin-topbar { align-items: flex-start; margin-bottom: 20px; }.admin-topbar .eyebrow { font-size: 7px; }.online-pill { display: none; }.admin-logout-mobile { display: inline-flex; padding: 8px 10px; border: 1px solid var(--line); border-radius: 7px; background: transparent; color: var(--white); font-size: 10px; }.welcome-banner { min-height: 155px; padding: 22px; }.welcome-icon { width: 42px; height: 42px; flex-shrink: 0; }.welcome-banner p { max-width: 260px; line-height: 1.7; }.stat-grid { gap: 10px; margin: 14px 0; }.stat-card { min-height: 125px; padding: 14px; }.stat-label { font-size: 8px; }.stat-card strong { font-size: 27px; }.stat-card small { font-size: 9px; }.admin-card { padding: 16px; }.table-card { padding: 0; }.module-toolbar { align-items: flex-start; flex-direction: column; }.module-toolbar .button { min-height: 40px; }.table-tools { padding: 12px; }.admin-table th, .admin-table td { padding: 13px 12px; }.form-grid { grid-template-columns: 1fr; }.quick-grid button { min-height: 100px; padding: 12px; } }
+.logout-button {
+    width: 100%;
+    display: flex;
+    align-items: center;
+    gap: 10px;
+    padding: 12px 16px;
+    border: none;
+    border-radius: 8px;
+    background: transparent;
+    color: #ffffff;
+    font-size: 15px;
+    cursor: pointer;
+    text-align: left;
+    transition: 0.2s ease;
+}
+
+.logout-button:hover {
+    background: rgba(255, 255, 255, 0.12);
+    color: #ff6b6b;
+}
+
+.sidebar-footer {
+    margin-top: auto;
+    padding: 15px;
+}
+
+#signup-form { display: grid; gap: 9px; }
+#signup-form label { color: #dce0d6; font-size: 12px; font-weight: 700; }
+#signup-form input { width: 100%; min-height: 45px; margin-bottom: 9px; padding: 0 13px; border: 1px solid rgba(244,245,239,.17); border-radius: 7px; outline: none; background: #101610; color: var(--white); font: inherit; font-size: 13px; }
+#signup-form input:focus { border-color: var(--lime); }
+.password-field { display: flex; width: 100%; margin-bottom: 9px; }
+.password-field input { flex: 1; min-width: 0; margin: 0 !important; border-radius: 7px 0 0 7px !important; }
+.password-toggle { min-width: 58px; border: 1px solid rgba(244,245,239,.17); border-left: 0; border-radius: 0 7px 7px 0; background: #20291d; color: var(--lime); font: inherit; font-size: 12px; cursor: pointer; }
+.password-toggle:focus-visible, .auth-link:focus-visible { outline: 2px solid var(--lime); outline-offset: 3px; }
+.auth-switch { margin: 18px 0 0; color: var(--muted); font-size: 12px; text-align: center; }
+.auth-link { padding: 0; border: 0; background: transparent; color: var(--lime); font: inherit; font-weight: 700; cursor: pointer; }
+.auth-status { display: none; margin: 0; color: var(--lime); font-size: 12px; line-height: 1.6; }
+.auth-status.visible { display: block; }
+.login-submit:disabled { opacity: .7; cursor: wait; }

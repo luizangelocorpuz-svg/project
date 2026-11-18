@@ -10,6 +10,7 @@
   <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
   <link href="https://fonts.googleapis.com/css2?family=DM+Sans:wght@400;500;600;700&family=Manrope:wght@400;500;600;700;800&display=swap" rel="stylesheet">
   <link rel="stylesheet" href="style.css">
+  <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2"></script>
   <script src="script.js" defer></script>
 </head>
 <body>
@@ -27,6 +28,7 @@
         <a class="nav-link" href="#features">Features</a>
         <a class="nav-link" href="#about">About</a>
         <button class="button button-small button-outline login-button" type="button">Login</button>
+        <button class="button button-small button-outline" id="account-logout-button" type="button" hidden>Log out</button>
       </div>
     </nav>
   </header>
@@ -172,25 +174,58 @@
     </div>
   </footer>
 
-  <!-- Admin login dialog -->
+  <!-- Account login and registration dialog -->
   <div class="login-modal" id="login-modal" aria-hidden="true">
     <div class="login-backdrop" data-close-login></div>
     <section class="login-panel" role="dialog" aria-modal="true" aria-labelledby="login-title">
       <button class="modal-close" type="button" aria-label="Close login" data-close-login>&times;</button>
       <span class="brand-mark login-mark" aria-hidden="true">A</span>
-      <p class="eyebrow"><span class="eyebrow-line"></span> ADMIN ACCESS</p>
-      <h2 id="login-title">Welcome back<span class="lime-dot">.</span></h2>
-      <p class="login-subtitle">Sign in to manage your sports facilities and resources.</p>
-      <form id="login-form">
-        <label for="admin-username">Username</label>
-        <input id="admin-username" name="username" autocomplete="username" required placeholder="Enter admin username">
-        <label for="admin-password">Password</label>
-        <input id="admin-password" name="password" type="password" autocomplete="current-password" required placeholder="Enter password">
-        <p class="login-error" id="login-error" role="alert"></p>
-        <button class="button button-primary login-submit" type="submit">Sign in <span aria-hidden="true">↗</span></button>
-      </form>
-      <p class="demo-credentials"><strong>Demo credentials</strong><br>Username: <code>admin</code> &nbsp; Password: <code>admin123</code></p>
-      <p class="security-note">Demo only: this front-end login is not secure for real accounts.</p>
+      <div id="login-view">
+        <p class="eyebrow"><span class="eyebrow-line"></span> ACCOUNT ACCESS</p>
+        <h2 id="login-title">Welcome back<span class="lime-dot">.</span></h2>
+        <p class="login-subtitle">Sign in with your email, or use the existing demo admin account.</p>
+        <form id="login-form">
+          <label for="admin-username">Email address or admin username</label>
+          <input id="admin-username" name="username" type="text" inputmode="email" autocomplete="username" required placeholder="Enter your email or admin username">
+          <label for="admin-password">Password</label>
+          <div class="password-field">
+            <input id="admin-password" name="password" type="password" autocomplete="current-password" required placeholder="Enter password">
+            <button type="button" class="password-toggle" data-password-target="admin-password" aria-label="Show password" aria-pressed="false">Show</button>
+          </div>
+          <p class="login-error" id="login-error" role="alert"></p>
+          <p class="auth-status" id="login-status" role="status" aria-live="polite"></p>
+          <button class="button button-primary login-submit" type="submit">Sign in <span aria-hidden="true">↗</span></button>
+        </form>
+        <p class="auth-switch">New to SportsHub? <button type="button" class="auth-link" id="show-signup">Create an account</button></p>
+        <p class="demo-credentials"><strong>Admin demo</strong><br>Username: <code>admin</code> &nbsp; Password: <code>admin123</code></p>
+        <p class="security-note">Demo credentials are client-side only and are not secure for production admin access.</p>
+      </div>
+      <div id="signup-view" hidden>
+        <p class="eyebrow"><span class="eyebrow-line"></span> JOIN SPORTSHUB</p>
+        <h2 id="signup-title">Create account<span class="lime-dot">.</span></h2>
+        <p class="login-subtitle">Create your account to sign in to SportsHub.</p>
+        <form id="signup-form">
+          <label for="signup-full-name">Full name</label>
+          <input id="signup-full-name" name="fullName" type="text" autocomplete="name" maxlength="100" required placeholder="Enter your full name">
+          <label for="signup-email">Email address</label>
+          <input id="signup-email" name="email" type="email" autocomplete="email" required placeholder="you@example.com">
+          <label for="signup-username">Username</label>
+          <input id="signup-username" name="username" type="text" autocomplete="username" minlength="3" maxlength="30" required placeholder="Choose a username">
+          <label for="signup-password">Password</label>
+          <div class="password-field">
+            <input id="signup-password" name="password" type="password" autocomplete="new-password" minlength="8" required placeholder="At least 8 characters">
+            <button type="button" class="password-toggle" data-password-target="signup-password" aria-label="Show password" aria-pressed="false">Show</button>
+          </div>
+          <label for="signup-confirm-password">Confirm password</label>
+          <div class="password-field">
+            <input id="signup-confirm-password" name="confirmPassword" type="password" autocomplete="new-password" minlength="8" required placeholder="Enter your password again">
+            <button type="button" class="password-toggle" data-password-target="signup-confirm-password" aria-label="Show password" aria-pressed="false">Show</button>
+          </div>
+          <p class="login-error" id="signup-error" role="alert"></p>
+          <button class="button button-primary login-submit" type="submit">Create account <span aria-hidden="true">↗</span></button>
+        </form>
+        <p class="auth-switch">Already have an account? <button type="button" class="auth-link" id="show-login">Back to login</button></p>
+      </div>
     </section>
   </div>
 
@@ -207,6 +242,12 @@
         <button class="admin-nav-link" data-page="maintenance"><span>⚒</span> Maintenance</button>
       </nav>
       <div class="sidebar-bottom"><div class="admin-avatar">A</div><div><strong>Administrator</strong><small>System Admin</small></div><button id="logout-button" class="logout-button" title="Log out" aria-label="Log out">↗</button></div>
+    <div class="sidebar-footer">
+    <button type="button" class="logout-button">
+        <span>↪</span>
+        Logout
+    </button>
+</div>
     </aside>
     <main class="admin-main">
       <header class="admin-topbar"><div><p class="eyebrow"><span class="eyebrow-line"></span> SPORTS RESOURCE MANAGEMENT</p><h1 id="page-title">Overview</h1></div><div class="admin-top-actions"><span class="online-pill"><i></i> System active</span><button class="admin-logout-mobile" id="logout-button-mobile">Log out</button></div></header>
@@ -218,7 +259,7 @@
           <article class="stat-card"><span class="stat-label">ACTIVE BORROWINGS</span><strong id="stat-borrowings">3</strong><small>Items currently borrowed</small><span class="stat-icon">↔</span></article>
           <article class="stat-card"><span class="stat-label">NEEDS ATTENTION</span><strong id="stat-maintenance">2</strong><small>Maintenance records</small><span class="stat-icon">⚒</span></article>
         </div>
-        <div class="dashboard-columns"><section class="admin-card"><div class="card-heading"><div><p class="eyebrow">QUICK ACCESS</p><h3>Manage your resources</h3></div></div><div class="quick-grid"><button data-goto="inventory"><span>◇</span><strong>Equipment</strong><small>View and add items</small></button><button data-goto="facilities"><span>▦</span><strong>Facilities</strong><small>Review schedules</small></button><button data-goto="borrowings"><span>↔</span><strong>Borrowing</strong><small>Track item returns</small></button><button data-goto="maintenance"><span>⚒</span><strong>Maintenance</strong><small>Review issues</small></button></div></section><section class="admin-card"><div class="card-heading"><div><p class="eyebrow">SYSTEM SNAPSHOT</p><h3>Resource status</h3></div></div><div class="status-row"><span class="status-bullet available"></span><span>Available equipment</span><strong id="available-count">8</strong></div><div class="status-row"><span class="status-bullet borrowed"></span><span>Borrowed equipment</span><strong id="borrowed-count">3</strong></div><div class="status-row"><span class="status-bullet repair"></span><span>Under maintenance</span><strong id="repair-count">1</strong></div><p class="snapshot-note">Sample figures are provided for demonstration. Update records in each module.</p></section></div>
+        <div class="dashboard-columns"><section class="admin-card"><div class="card-heading"><div><p class="eyebrow">QUICK ACCESS</p><h3>Manage your resources</h3></div></div><div class="quick-grid"><button data-goto="inventory"><span>◇</span><strong>Equipment</strong><small>View and add items</small></button><button data-goto="facilities"><span>▦</span><strong>Facilities</strong><small>Review schedules</small></button><button data-goto="borrowings"><span>↔</span><strong>Borrowing</strong><small>Track item returns</small></button><button data-goto="maintenance"><span>⚒</span><strong>Maintenance</strong><small>Review issues</small></button></div></section><section class="admin-card"><div class="card-heading"><div><p class="eyebrow">SYSTEM SNAPSHOT</p><h3>Resource status</h3></div></div><div class="status-row"><span class="status-bullet available"></span><span>Available equipment</span><strong id="available-count">0</strong></div><div class="status-row"><span class="status-bullet borrowed"></span><span>Borrowed equipment</span><strong id="borrowed-count">0</strong></div><div class="status-row"><span class="status-bullet repair"></span><span>Under maintenance</span><strong id="repair-count">0</strong></div><p class="snapshot-note">Equipment counts come from the database. Facility, borrowing, and maintenance records are not connected yet.</p></section></div>
       </section>
       <section class="admin-page" id="page-inventory" hidden><div class="module-toolbar"><div><p class="module-description">Record equipment, quantities, and current condition.</p></div><button class="button button-primary" id="add-equipment-button">+ Add equipment</button></div><div class="admin-card table-card"><div class="table-tools"><input id="inventory-search" placeholder="Search equipment..." aria-label="Search equipment"><span id="inventory-count" class="table-count">0 items</span></div><div class="table-wrap"><table class="admin-table"><thead><tr><th>Equipment</th><th>Category</th><th>Quantity</th><th>Condition</th><th>Availability</th><th>Action</th></tr></thead><tbody id="inventory-table-body"></tbody></table></div><p class="empty-state" id="inventory-empty" hidden>No equipment found. Add your first item to get started.</p></div><form id="equipment-form" class="admin-card equipment-form" hidden><h3 id="equipment-form-title">Add equipment</h3><div class="form-grid"><label>Equipment name<input id="equipment-name" required placeholder="e.g. Basketball"></label><label>Category<input id="equipment-category" required placeholder="e.g. Ball sports"></label><label>Quantity<input id="equipment-quantity" type="number" min="1" value="1" required></label><label>Condition<select id="equipment-condition"><option>Good</option><option>Fair</option><option>Needs repair</option></select></label></div><div class="form-actions"><button class="button button-outline" type="button" id="cancel-equipment">Cancel</button><button class="button button-primary" type="submit">Save equipment</button></div></form></section>
       <section class="admin-page" id="page-facilities" hidden><p class="module-description">A sample overview of your sports spaces and their schedules.</p><div class="admin-card table-card"><div class="table-wrap"><table class="admin-table"><thead><tr><th>Facility</th><th>Location</th><th>Schedule</th><th>Status</th></tr></thead><tbody><tr><td>Basketball Court</td><td>Main Gym</td><td>8:00 AM – 6:00 PM</td><td><span class="pill-status good">Available</span></td></tr><tr><td>Volleyball Court</td><td>Main Gym</td><td>9:00 AM – 5:00 PM</td><td><span class="pill-status booked">Booked</span></td></tr><tr><td>Football Field</td><td>Outdoor Grounds</td><td>7:00 AM – 5:00 PM</td><td><span class="pill-status good">Available</span></td></tr><tr><td>Fitness Room</td><td>Sports Building</td><td>8:00 AM – 7:00 PM</td><td><span class="pill-status repair">Maintenance</span></td></tr></tbody></table></div></div><p class="snapshot-note">Facility records shown here are sample data. Booking and calendar editing are not connected yet.</p></section>
