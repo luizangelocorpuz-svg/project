@@ -10,43 +10,8 @@
   const $$ = (selector, root = document) =>
     Array.from(root.querySelectorAll(selector));
 
-  const SESSION_KEY = "sportshub-demo-session";
-
-  let supabaseClient = null;
-  let supabaseSetupError =
-    "Supabase is not configured. Set Supabase:Url and Supabase:PublishableKey in appsettings.json.";
-
-  function getSupabaseSetupError() {
-    return supabaseSetupError;
-  }
-
-  async function configureSupabase() {
-    const response = await fetch("/api/config", {
-      headers: { Accept: "application/json" }
-    });
-
-    if (!response.ok) {
-      throw new Error(`App configuration request failed (${response.status}).`);
-    }
-
-    const config = await response.json();
-    const url = config.supabaseUrl?.trim();
-    const publishableKey = config.supabasePublishableKey?.trim();
-
-    if (!url || !publishableKey) return;
-
-    if (!window.supabase?.createClient) {
-      supabaseSetupError =
-        "The Supabase JavaScript library did not load. Check your internet connection and try again.";
-      return;
-    }
-
-    supabaseClient = window.supabase.createClient(url, publishableKey);
-  }
-
-  // Demo-only credentials. Do not use these for a real website.
-  const DEMO_USERNAME = "admin";
-  const DEMO_PASSWORD = "admin123";
+  const AUTH_SESSION_KEY = "sportshub-auth-session";
+  let authSession = null;
 
   const landingPage = $("#home");
   const loginModal = $("#login-modal");
@@ -304,29 +269,10 @@
   async function login(event) {
     event.preventDefault();
 
-    const emailOrUsername = $("#admin-username")?.value.trim() ?? "";
+    const email = $("#admin-username")?.value.trim() ?? "";
     const password = $("#admin-password")?.value ?? "";
 
-    if (
-      emailOrUsername === DEMO_USERNAME &&
-      password === DEMO_PASSWORD
-    ) {
-      // This flag is for a local demonstration only.
-      sessionStorage.setItem(SESSION_KEY, "true");
-
-      closeLogin();
-      showDashboard();
-      showToast("Demo login successful.");
-
-      return;
-    }
-
-    if (!supabaseClient) {
-      showLoginError(getSupabaseSetupError());
-      return;
-    }
-
-    if (!/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(emailOrUsername)) {
+    if (!/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(email)) {
       showLoginError("Enter the email address used to create your account.");
       return;
     }
@@ -336,19 +282,26 @@
     submitButton.textContent = "Signing in...";
 
     try {
-      const { data, error } = await supabaseClient.auth.signInWithPassword({
-        email: emailOrUsername,
+      const data = await requestAuth("/api/auth/login", {
+        email,
         password
       });
 
-      if (error) throw error;
-
-      setAccountSignedIn(Boolean(data.user));
+      storeAuthSession(data);
       closeLogin();
-      showLandingPage();
-      showToast(
-        "Signed in. Registered accounts do not have administrator dashboard access."
-      );
+      try {
+        await loadEquipment();
+        showDashboard();
+        showToast("Signed in successfully.");
+      } catch (accessError) {
+        showLandingPage();
+        if (accessError.message.includes("administrator access")) {
+          showToast("Signed in. The admin dashboard is only available to administrators.");
+        } else {
+          console.error("Unable to load the administrator dashboard:", accessError);
+          showToast(`Signed in, but the dashboard could not load: ${accessError.message}`);
+        }
+      }
     } catch (error) {
       showLoginError(
         error instanceof Error
@@ -380,40 +333,28 @@
       return;
     }
 
-    if (!supabaseClient) {
-      showSignupError(getSupabaseSetupError());
-      return;
-    }
-
     const submitButton = $("#signup-form button[type='submit']");
     submitButton.disabled = true;
     submitButton.textContent = "Creating account...";
 
     try {
-      const { data, error } = await supabaseClient.auth.signUp({
+      const data = await requestAuth("/api/auth/signup", {
         email,
         password,
-        options: {
-          data: {
-            full_name: fullName,
-            username
-          },
-          emailRedirectTo: window.location.origin
+        data: {
+          full_name: fullName,
+          username
         }
       });
-
-      if (error) throw error;
 
       signupForm.reset();
       resetPasswordVisibility();
 
-      if (data.session && data.user) {
-        setAccountSignedIn(true);
+      if (data.access_token && data.refresh_token) {
+        storeAuthSession(data);
         closeLogin();
         showLandingPage();
-        showToast(
-          "Account created and signed in. Administrator dashboard access is restricted."
-        );
+        showToast("Account created and signed in. Admin access must be granted separately.");
         return;
       }
 
@@ -448,49 +389,105 @@
     signupForm.addEventListener("submit", signup);
   }
 
+  function storeAuthSession(session) {
+    if (!session?.access_token || !session?.refresh_token || !session?.user) {
+      throw new Error("The authentication server returned an invalid session.");
+    }
+
+    authSession = session;
+    sessionStorage.setItem(AUTH_SESSION_KEY, JSON.stringify(session));
+    setAccountSignedIn(true);
+  }
+
+  function clearAuthSession() {
+    authSession = null;
+    sessionStorage.removeItem(AUTH_SESSION_KEY);
+    setAccountSignedIn(false);
+  }
+
   async function signOutAccount() {
     const logoutButton = $("#account-logout-button");
     if (logoutButton) logoutButton.disabled = true;
 
     try {
-      const { error } = await supabaseClient.auth.signOut();
-      if (error) throw error;
-
-      setAccountSignedIn(false);
-      showToast("You have logged out.");
+      if (authSession?.access_token) {
+        await requestAuth("/api/auth/logout", {
+          accessToken: authSession.access_token
+        });
+      }
     } catch (error) {
       const message =
         error instanceof Error
           ? error.message
-          : "Unable to log out. Please try again.";
-      console.error("Supabase sign-out failed:", error);
-      showToast(`Sign out failed: ${message}`);
+          : "The server session could not be revoked.";
+      console.error("Unable to revoke the authentication session:", error);
+      showToast(`Signed out locally. ${message}`);
     } finally {
+      clearAuthSession();
+      closeEquipmentForm();
+      closeLogin();
+      showLandingPage();
       if (logoutButton) logoutButton.disabled = false;
     }
   }
 
   $("#account-logout-button")?.addEventListener("click", signOutAccount);
 
-  function initializeSupabaseAuth() {
-    if (!supabaseClient) return;
+  async function initializeAuthentication() {
+    const savedSession = sessionStorage.getItem(AUTH_SESSION_KEY);
+    if (!savedSession) return;
 
-    supabaseClient.auth.onAuthStateChange((_event, session) => {
-      setAccountSignedIn(Boolean(session?.user));
-    });
+    try {
+      storeAuthSession(JSON.parse(savedSession));
+      await loadEquipment();
+      showDashboard();
+    } catch (error) {
+      if (error.message.includes("administrator access")) return;
+      console.error("Unable to restore the account session:", error);
+      clearAuthSession();
+      showToast(error.message || "Unable to restore your session. Please sign in again.");
+    }
+  }
 
-    supabaseClient.auth.getSession().then(({ data, error }) => {
-      if (error) {
-        console.error("Unable to restore the Supabase session:", error);
-        showToast("Unable to restore your account session. Please sign in again.");
-        return;
+  async function requestAuth(url, body) {
+    let response;
+    try {
+      response = await fetch(url, {
+        method: "POST",
+        headers: {
+          Accept: "application/json",
+          "Content-Type": "application/json"
+        },
+        body: JSON.stringify(body)
+      });
+    } catch (error) {
+      if (error instanceof TypeError) {
+        throw new Error("Could not reach the app server. Start the ASP.NET Core app and try again.");
       }
+      throw error;
+    }
 
-      setAccountSignedIn(Boolean(data.session?.user));
-    }).catch((error) => {
-      console.error("Unable to restore the Supabase session:", error);
-      showToast("Unable to restore your account session. Please sign in again.");
-    });
+    if (response.status === 204) return null;
+
+    let result;
+    try {
+      result = await response.json();
+    } catch {
+      throw new Error(`Account request failed (${response.status}).`);
+    }
+
+    if (!response.ok) {
+      throw new Error(
+        result.msg ||
+        result.message ||
+        result.error_description ||
+        result.error ||
+        result.detail ||
+        `Account request failed (${response.status}).`
+      );
+    }
+
+    return result;
   }
 
   let data = { equipment: [] };
@@ -507,23 +504,52 @@
     };
   }
 
-  async function requestEquipment(url, options = {}) {
-    const response = await fetch(url, {
-      ...options,
-      headers: {
-        Accept: "application/json",
-        ...(options.body ? { "Content-Type": "application/json" } : {}),
-        ...options.headers
+  async function requestEquipment(url, options = {}, canRefresh = true) {
+    if (!authSession?.access_token) {
+      throw new Error("Sign in with an administrator account to manage equipment.");
+    }
+
+    let response;
+    try {
+      response = await fetch(url, {
+        ...options,
+        headers: {
+          Accept: "application/json",
+          Authorization: `Bearer ${authSession.access_token}`,
+          ...(options.body ? { "Content-Type": "application/json" } : {}),
+          ...options.headers
+        }
+      });
+    } catch (error) {
+      if (error instanceof TypeError) {
+        throw new Error("Could not reach the app server. Start the ASP.NET Core app and try again.");
       }
-    });
+      throw error;
+    }
 
     if (!response.ok) {
-      let message = `Equipment request failed (${response.status}).`;
+      let message = response.status === 403
+        ? "This account does not have administrator access."
+        : response.status === 401
+          ? "Your session expired. Sign in again."
+          : `Equipment request failed (${response.status}).`;
       try {
         const error = await response.json();
         if (error.error) message = error.error;
       } catch {
         // Keep the HTTP status message when the server does not return JSON.
+      }
+      if (response.status === 401 && canRefresh) {
+        try {
+          const refreshed = await requestAuth("/api/auth/refresh", {
+            refreshToken: authSession.refresh_token
+          });
+          storeAuthSession(refreshed);
+          return requestEquipment(url, options, false);
+        } catch {
+          clearAuthSession();
+          throw new Error("Your session expired. Please sign in again.");
+        }
       }
       throw new Error(message);
     }
@@ -927,14 +953,8 @@
   // LOGOUT
   // ---------------------------------------------------------
 
-  function logout() {
-    sessionStorage.removeItem(SESSION_KEY);
-
-    closeEquipmentForm();
-    closeLogin();
-    showLandingPage();
-
-    showToast("You have logged out.");
+  async function logout() {
+    await signOutAccount();
     window.scrollTo({ top: 0, behavior: "smooth" });
   }
 
@@ -1005,19 +1025,6 @@
   // ---------------------------------------------------------
 
   setupLandingPage();
-  configureSupabase()
-    .then(initializeSupabaseAuth)
-    .catch((error) => {
-      console.error("Unable to load Supabase configuration:", error);
-      supabaseSetupError =
-        "Unable to load app configuration. Start the app through its ASP.NET Core server and try again.";
-    });
-
-  // Allow the demo dashboard to remain open during this browser tab's
-  // session if the page is refreshed after logging in.
-  if (sessionStorage.getItem(SESSION_KEY) === "true") {
-    showDashboard();
-  } else {
-    showLandingPage();
-  }
+  showLandingPage();
+  initializeAuthentication();
 })();

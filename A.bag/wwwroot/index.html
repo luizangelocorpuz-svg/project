@@ -10,8 +10,7 @@
   <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
   <link href="https://fonts.googleapis.com/css2?family=DM+Sans:wght@400;500;600;700&family=Manrope:wght@400;500;600;700;800&display=swap" rel="stylesheet">
   <link rel="stylesheet" href="style.css">
-  <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2"></script>
-  <script src="script.js" defer></script>
+  <script src="script.js?v=20261119-auth" defer></script>
 </head>
 <body>
   <header class="site-header">
@@ -183,10 +182,10 @@
       <div id="login-view">
         <p class="eyebrow"><span class="eyebrow-line"></span> ACCOUNT ACCESS</p>
         <h2 id="login-title">Welcome back<span class="lime-dot">.</span></h2>
-        <p class="login-subtitle">Sign in with your email, or use the existing demo admin account.</p>
+        <p class="login-subtitle">Sign in with the email address linked to your administrator account.</p>
         <form id="login-form">
-          <label for="admin-username">Email address or admin username</label>
-          <input id="admin-username" name="username" type="text" inputmode="email" autocomplete="username" required placeholder="Enter your email or admin username">
+          <label for="admin-username">Email address</label>
+          <input id="admin-username" name="email" type="email" autocomplete="username" required placeholder="Enter your email address">
           <label for="admin-password">Password</label>
           <div class="password-field">
             <input id="admin-password" name="password" type="password" autocomplete="current-password" required placeholder="Enter password">
@@ -197,8 +196,6 @@
           <button class="button button-primary login-submit" type="submit">Sign in <span aria-hidden="true">↗</span></button>
         </form>
         <p class="auth-switch">New to SportsHub? <button type="button" class="auth-link" id="show-signup">Create an account</button></p>
-        <p class="demo-credentials"><strong>Admin demo</strong><br>Username: <code>admin</code> &nbsp; Password: <code>admin123</code></p>
-        <p class="security-note">Demo credentials are client-side only and are not secure for production admin access.</p>
       </div>
       <div id="signup-view" hidden>
         <p class="eyebrow"><span class="eyebrow-line"></span> JOIN SPORTSHUB</p>

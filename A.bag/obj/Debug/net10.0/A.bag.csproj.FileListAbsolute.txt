@@ -22,8 +22,6 @@ C:\Users\LMI\OneDrive\Desktop\Grade 12\12 Sagittaruis\project\A.bag\obj\Debug\ne
 C:\Users\LMI\OneDrive\Desktop\Grade 12\12 Sagittaruis\project\A.bag\obj\Debug\net10.0\rjsmrazor.dswa.cache.json
 C:\Users\LMI\OneDrive\Desktop\Grade 12\12 Sagittaruis\project\A.bag\obj\Debug\net10.0\rjsmcshtml.dswa.cache.json
 C:\Users\LMI\OneDrive\Desktop\Grade 12\12 Sagittaruis\project\A.bag\obj\Debug\net10.0\scopedcss\bundle\A.bag.styles.css
-C:\Users\LMI\OneDrive\Desktop\Grade 12\12 Sagittaruis\project\A.bag\obj\Debug\net10.0\compressed\66wdq970vc-{0}-pm3ep9np56-pm3ep9np56.gz
-C:\Users\LMI\OneDrive\Desktop\Grade 12\12 Sagittaruis\project\A.bag\obj\Debug\net10.0\compressed\tpai6gq4lb-{0}-5oogx0rkyk-5oogx0rkyk.gz
 C:\Users\LMI\OneDrive\Desktop\Grade 12\12 Sagittaruis\project\A.bag\obj\Debug\net10.0\compressed\npwpjno7nv-{0}-5zffwbes9f-5zffwbes9f.gz
 C:\Users\LMI\OneDrive\Desktop\Grade 12\12 Sagittaruis\project\A.bag\obj\Debug\net10.0\staticwebassets.build.json
 C:\Users\LMI\OneDrive\Desktop\Grade 12\12 Sagittaruis\project\A.bag\obj\Debug\net10.0\staticwebassets.build.json.cache
@@ -36,3 +34,16 @@ C:\Users\LMI\OneDrive\Desktop\Grade 12\12 Sagittaruis\project\A.bag\obj\Debug\ne
 C:\Users\LMI\OneDrive\Desktop\Grade 12\12 Sagittaruis\project\A.bag\obj\Debug\net10.0\A.bag.pdb
 C:\Users\LMI\OneDrive\Desktop\Grade 12\12 Sagittaruis\project\A.bag\obj\Debug\net10.0\A.bag.genruntimeconfig.cache
 C:\Users\LMI\OneDrive\Desktop\Grade 12\12 Sagittaruis\project\A.bag\obj\Debug\net10.0\ref\A.bag.dll
+C:\Users\LMI\OneDrive\Desktop\Grade 12\12 Sagittaruis\project\A.bag\obj\Debug\net10.0\compressed\tpai6gq4lb-{0}-5s422ortfn-5s422ortfn.gz
+C:\Users\LMI\OneDrive\Desktop\Grade 12\12 Sagittaruis\project\A.bag\obj\Debug\net10.0\compressed\66wdq970vc-{0}-wzy8axgrpi-wzy8axgrpi.gz
+C:\Users\LMI\OneDrive\Desktop\Grade 12\12 Sagittaruis\project\A.bag\obj\verification\appsettings.Development.json
+C:\Users\LMI\OneDrive\Desktop\Grade 12\12 Sagittaruis\project\A.bag\obj\verification\appsettings.json
+C:\Users\LMI\OneDrive\Desktop\Grade 12\12 Sagittaruis\project\A.bag\obj\verification\package-lock.json
+C:\Users\LMI\OneDrive\Desktop\Grade 12\12 Sagittaruis\project\A.bag\obj\verification\package.json
+C:\Users\LMI\OneDrive\Desktop\Grade 12\12 Sagittaruis\project\A.bag\obj\verification\A.bag.staticwebassets.runtime.json
+C:\Users\LMI\OneDrive\Desktop\Grade 12\12 Sagittaruis\project\A.bag\obj\verification\A.bag.staticwebassets.endpoints.json
+C:\Users\LMI\OneDrive\Desktop\Grade 12\12 Sagittaruis\project\A.bag\obj\verification\A.bag.deps.json
+C:\Users\LMI\OneDrive\Desktop\Grade 12\12 Sagittaruis\project\A.bag\obj\verification\A.bag.runtimeconfig.json
+C:\Users\LMI\OneDrive\Desktop\Grade 12\12 Sagittaruis\project\A.bag\obj\verification\A.bag.dll
+C:\Users\LMI\OneDrive\Desktop\Grade 12\12 Sagittaruis\project\A.bag\obj\verification\A.bag.pdb
+C:\Users\LMI\OneDrive\Desktop\Grade 12\12 Sagittaruis\project\A.bag\obj\verification\Npgsql.dll
